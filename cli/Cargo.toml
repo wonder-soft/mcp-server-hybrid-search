@@ -1,0 +1,40 @@
+[package]
+name = "ragctl"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "ragctl"
+path = "src/main.rs"
+
+[dependencies]
+mcp-hybrid-search-common = { path = "../common" }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Async
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Search engines
+qdrant-client = "1"
+tantivy = "0.22"
+
+# HTTP client (for embedding API)
+reqwest = { version = "0.12", features = ["json"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Utils
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
+thiserror = "2"
+dotenvy = "0.15"
+chrono = { version = "0.4", features = ["serde"] }
+walkdir = "2"

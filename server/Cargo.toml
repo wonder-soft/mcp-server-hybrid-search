@@ -1,0 +1,43 @@
+[package]
+name = "mcp-server-hybrid-search"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "mcp-server-hybrid-search"
+path = "src/main.rs"
+
+[dependencies]
+mcp-hybrid-search-common = { path = "../common" }
+
+# Web framework & async
+axum = "0.7"
+axum-extra = { version = "0.9", features = ["typed-header"] }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+async-stream = "0.3"
+futures = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP client (for embedding API)
+reqwest = { version = "0.12", features = ["json"] }
+
+# Search engines
+qdrant-client = "1"
+tantivy = "0.22"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Utils
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
+thiserror = "2"
+dotenvy = "0.15"
+chrono = { version = "0.4", features = ["serde"] }

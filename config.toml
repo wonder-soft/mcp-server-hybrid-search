@@ -1,0 +1,22 @@
+# mcp-server-hybrid-search configuration
+
+# Qdrant connection (gRPC port)
+qdrant_url = "http://localhost:6334"
+
+# Qdrant collection name
+collection_name = "docs"
+
+# Tantivy index directory
+# tantivy_index_dir = "~/.mcp-hybrid-search/tantivy"
+
+# Chunk settings
+chunk_size = 1000
+chunk_overlap = 200
+
+# MCP server listen port
+listen_port = 7070
+
+# Embedding settings
+embedding_provider = "openai"
+embedding_model = "text-embedding-3-small"
+embedding_dimension = 1536
