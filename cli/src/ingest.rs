@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
+use std::process::Command;
 
 use anyhow::Result;
 use mcp_hybrid_search_common::config::AppConfig;
@@ -11,15 +12,33 @@ use crate::embedding;
 use crate::qdrant_client;
 use crate::tantivy_index;
 
-const SUPPORTED_EXTENSIONS: &[&str] = &["md", "txt"];
+/// Text files that can be read directly.
+const TEXT_EXTENSIONS: &[&str] = &["md", "txt"];
+
+/// Binary/rich files that require markitdown conversion.
+const MARKITDOWN_EXTENSIONS: &[&str] = &["pdf", "xlsx", "xls", "docx", "pptx", "csv", "html"];
+
+/// All supported extensions (union of both).
+fn is_supported_extension(ext: &str) -> bool {
+    TEXT_EXTENSIONS.contains(&ext) || MARKITDOWN_EXTENSIONS.contains(&ext)
+}
 
 /// Run the ingest pipeline for the given source directories.
 pub async fn run_ingest(config: &AppConfig, sources: &[String]) -> Result<()> {
     // Ensure Qdrant collection exists
     qdrant_client::ensure_collection(config).await?;
 
+    // Check markitdown availability
+    let markitdown_available = check_markitdown();
+    if !markitdown_available {
+        tracing::warn!(
+            "markitdown not found in PATH. PDF/Excel/Word files will be skipped. \
+             Install with: pip install markitdown"
+        );
+    }
+
     // Collect files
-    let files = collect_files(sources);
+    let files = collect_files(sources, markitdown_available);
     tracing::info!("Found {} files to process", files.len());
 
     if files.is_empty() {
@@ -102,8 +121,37 @@ pub async fn run_ingest(config: &AppConfig, sources: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Check if markitdown CLI is available.
+fn check_markitdown() -> bool {
+    Command::new("markitdown")
+        .arg("--help")
+        .output()
+        .is_ok()
+}
+
+/// Convert a file to markdown text using markitdown CLI.
+fn convert_with_markitdown(file_path: &str) -> Result<String> {
+    tracing::info!("Converting with markitdown: {}", file_path);
+    let output = Command::new("markitdown")
+        .arg(file_path)
+        .output()
+        .map_err(|e| anyhow::anyhow!("Failed to run markitdown: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("markitdown failed for {}: {}", file_path, stderr);
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    if text.trim().is_empty() {
+        anyhow::bail!("markitdown returned empty output for {}", file_path);
+    }
+
+    Ok(text)
+}
+
 /// Collect all supported files from source directories.
-fn collect_files(sources: &[String]) -> Vec<String> {
+fn collect_files(sources: &[String], markitdown_available: bool) -> Vec<String> {
     let mut files = Vec::new();
 
     for source in sources {
@@ -119,8 +167,17 @@ fn collect_files(sources: &[String]) -> Vec<String> {
                     if entry.file_type().is_file() {
                         if let Some(ext) = entry.path().extension() {
                             let ext_str = ext.to_string_lossy().to_lowercase();
-                            if SUPPORTED_EXTENSIONS.contains(&ext_str.as_str()) {
+                            if TEXT_EXTENSIONS.contains(&ext_str.as_str()) {
                                 files.push(entry.path().to_string_lossy().to_string());
+                            } else if MARKITDOWN_EXTENSIONS.contains(&ext_str.as_str()) {
+                                if markitdown_available {
+                                    files.push(entry.path().to_string_lossy().to_string());
+                                } else {
+                                    tracing::warn!(
+                                        "Skipping {} (markitdown not available)",
+                                        entry.path().display()
+                                    );
+                                }
                             }
                         }
                     }
@@ -137,18 +194,23 @@ fn collect_files(sources: &[String]) -> Vec<String> {
 
 /// Process a single file into chunks.
 fn process_file(config: &AppConfig, file_path: &str) -> Result<Vec<ChunkPayload>> {
-    let content = std::fs::read_to_string(file_path)?;
     let path = Path::new(file_path);
+    let ext = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_else(|| "txt".to_string());
+
+    // Read or convert file content
+    let content = if MARKITDOWN_EXTENSIONS.contains(&ext.as_str()) {
+        convert_with_markitdown(file_path)?
+    } else {
+        std::fs::read_to_string(file_path)?
+    };
 
     let file_name = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
-
-    let ext = path
-        .extension()
-        .map(|e| e.to_string_lossy().to_string())
-        .unwrap_or_else(|| "txt".to_string());
 
     let title = chunker::extract_title(&content, &file_name);
     let chunks = chunker::chunk_text(&content, config.chunk_size, config.chunk_overlap);
