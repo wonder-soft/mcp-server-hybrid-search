@@ -37,7 +37,15 @@ cp .env.example .env
 ### 3. Build
 
 ```bash
+# Default build (English/whitespace-based BM25 tokenizer)
 cargo build --release
+
+# With Japanese tokenizer for BM25 full-text search
+cargo build --release --features ja
+
+# Other language tokenizers
+cargo build --release --features ko   # Korean
+cargo build --release --features zh   # Chinese
 ```
 
 ### 4. Initialize
@@ -172,8 +180,24 @@ Edit `config.toml`:
 | `listen_port` | `7070` | MCP server port |
 | `embedding_model` | `text-embedding-3-small` | OpenAI embedding model |
 | `embedding_dimension` | `1536` | Embedding vector dimension |
+| `tokenizer` | `default` | BM25 tokenizer (see below) |
 
 Default source directory: `~/.local/share/mcp-hybrid-search/`
+
+### Tokenizer
+
+The `tokenizer` config controls how Tantivy splits text for BM25 full-text search. The default tokenizer is whitespace-based, which works well for English but poorly for CJK languages (Japanese, Korean, Chinese) where words are not separated by spaces.
+
+| Value | Feature flag | Dictionary |
+|-------|-------------|------------|
+| `default` | *(none)* | Whitespace-based (built-in) |
+| `japanese` | `--features ja` | IPADIC |
+| `korean` | `--features ko` | ko-dic |
+| `chinese` | `--features zh` | CC-CEDICT |
+
+Language dictionaries are embedded into the binary at build time via [Lindera](https://github.com/lindera/lindera). Only enable the features you need — each adds ~50MB to the binary.
+
+> **Note:** Changing the tokenizer requires rebuilding the Tantivy index. Run `ragctl reset` then `ragctl ingest` after switching tokenizers.
 
 ## Search Algorithm
 
