@@ -71,7 +71,7 @@ async fn get_embedding_openai(config: &AppConfig, text: &str) -> Result<Vec<f32>
 
 #[cfg(feature = "local-embed")]
 fn get_embedding_local(config: &AppConfig, text: &str) -> Result<Vec<f32>> {
-    use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+    use fastembed::{InitOptions, TextEmbedding};
 
     let model_type = resolve_local_model(&config.embedding_model)?;
     let mut model = TextEmbedding::try_new(InitOptions::new(model_type))?;
