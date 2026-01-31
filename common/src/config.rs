@@ -29,6 +29,9 @@ pub struct AppConfig {
 
     #[serde(default = "default_embedding_dimension")]
     pub embedding_dimension: usize,
+
+    #[serde(default = "default_tokenizer")]
+    pub tokenizer: String,
 }
 
 fn default_qdrant_url() -> String {
@@ -71,6 +74,10 @@ fn default_embedding_dimension() -> usize {
     1536
 }
 
+fn default_tokenizer() -> String {
+    "default".to_string()
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -83,6 +90,7 @@ impl Default for AppConfig {
             embedding_provider: default_embedding_provider(),
             embedding_model: default_embedding_model(),
             embedding_dimension: default_embedding_dimension(),
+            tokenizer: default_tokenizer(),
         }
     }
 }

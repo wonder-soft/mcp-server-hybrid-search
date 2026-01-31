@@ -7,23 +7,118 @@ use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::{Index, ReloadPolicy};
 
-fn build_schema() -> Schema {
+/// Name used for the custom tokenizer when configured.
+const CUSTOM_TOKENIZER_NAME: &str = "custom_tokenizer";
+
+fn build_schema(tokenizer_name: &str) -> Schema {
     let mut schema_builder = Schema::builder();
     schema_builder.add_text_field("chunk_id", STRING | STORED);
     schema_builder.add_text_field("source_path", STRING | STORED);
-    schema_builder.add_text_field("title", TEXT | STORED);
-    schema_builder.add_text_field("body", TEXT | STORED);
+
+    let text_options = TextOptions::default()
+        .set_indexing_options(
+            TextFieldIndexing::default()
+                .set_tokenizer(tokenizer_name)
+                .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+        )
+        .set_stored();
+
+    schema_builder.add_text_field("title", text_options.clone());
+    schema_builder.add_text_field("body", text_options);
     schema_builder.add_text_field("source_type", STRING | STORED);
     schema_builder.build()
 }
 
-fn open_index(index_dir: &str) -> Result<Index> {
-    let path = Path::new(index_dir);
+fn resolve_tokenizer_name(config: &AppConfig) -> &str {
+    match config.tokenizer.as_str() {
+        "default" | "" => "default",
+        _ => CUSTOM_TOKENIZER_NAME,
+    }
+}
+
+fn register_tokenizer(index: &Index, config: &AppConfig) -> Result<()> {
+    match config.tokenizer.as_str() {
+        "default" | "" => Ok(()),
+        "japanese" | "korean" | "chinese" => register_lindera_tokenizer(index, &config.tokenizer),
+        other => {
+            anyhow::bail!(
+                "Unknown tokenizer '{}'. Supported values: default, japanese, korean, chinese",
+                other
+            )
+        }
+    }
+}
+
+#[cfg(any(feature = "ja", feature = "ko", feature = "zh"))]
+fn register_lindera_tokenizer(index: &Index, lang: &str) -> Result<()> {
+    use lindera::mode::Mode;
+    use lindera::segmenter::Segmenter;
+    use lindera_tantivy::tokenizer::LinderaTokenizer;
+
+    let dict_uri = match lang {
+        "japanese" => {
+            #[cfg(not(feature = "ja"))]
+            anyhow::bail!(
+                "tokenizer = \"japanese\" requires the 'ja' feature. \
+                 Build with: cargo build --features ja"
+            );
+            #[cfg(feature = "ja")]
+            "embedded://ipadic"
+        }
+        "korean" => {
+            #[cfg(not(feature = "ko"))]
+            anyhow::bail!(
+                "tokenizer = \"korean\" requires the 'ko' feature. \
+                 Build with: cargo build --features ko"
+            );
+            #[cfg(feature = "ko")]
+            "embedded://ko-dic"
+        }
+        "chinese" => {
+            #[cfg(not(feature = "zh"))]
+            anyhow::bail!(
+                "tokenizer = \"chinese\" requires the 'zh' feature. \
+                 Build with: cargo build --features zh"
+            );
+            #[cfg(feature = "zh")]
+            "embedded://cc-cedict"
+        }
+        _ => anyhow::bail!("Unsupported language for lindera: {}", lang),
+    };
+
+    let dictionary =
+        lindera::dictionary::load_dictionary(dict_uri).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let segmenter = Segmenter::new(Mode::Normal, dictionary, None);
+    let tokenizer = LinderaTokenizer::from_segmenter(segmenter);
+    index
+        .tokenizers()
+        .register(CUSTOM_TOKENIZER_NAME, tokenizer);
+    tracing::info!("Registered lindera tokenizer for '{}'", lang);
+    Ok(())
+}
+
+#[cfg(not(any(feature = "ja", feature = "ko", feature = "zh")))]
+fn register_lindera_tokenizer(_index: &Index, lang: &str) -> Result<()> {
+    anyhow::bail!(
+        "tokenizer = \"{}\" requires a language feature to be enabled at build time. \
+         Available features: ja, ko, zh. \
+         Example: cargo build --features ja",
+        lang
+    )
+}
+
+fn open_index(config: &AppConfig) -> Result<Index> {
+    let path = Path::new(&config.tantivy_index_dir);
     if path.exists() {
-        Ok(Index::open_in_dir(path)?)
+        let index = Index::open_in_dir(path)?;
+        register_tokenizer(&index, config)?;
+        Ok(index)
     } else {
+        let tokenizer_name = resolve_tokenizer_name(config);
         std::fs::create_dir_all(path)?;
-        Ok(Index::create_in_dir(path, build_schema())?)
+        let index = Index::create_in_dir(path, build_schema(tokenizer_name))?;
+        register_tokenizer(&index, config)?;
+        Ok(index)
     }
 }
 
@@ -33,7 +128,7 @@ pub fn search(
     top_k: usize,
     filters: &SearchFilters,
 ) -> Result<Vec<SearchResult>> {
-    let index = open_index(&config.tantivy_index_dir)?;
+    let index = open_index(config)?;
     let schema = index.schema();
 
     let chunk_id_field = schema.get_field("chunk_id").unwrap();

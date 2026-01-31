@@ -7,7 +7,15 @@ edition.workspace = true
 name = "ragctl"
 path = "src/main.rs"
 
+[features]
+default = []
+ja = ["lindera-tantivy/embed-ipadic", "lindera"]
+ko = ["lindera-tantivy/embed-ko-dic", "lindera"]
+zh = ["lindera-tantivy/embed-cc-cedict", "lindera"]
+
 [dependencies]
+lindera-tantivy = { version = "2.0.0", optional = true }
+lindera = { version = "2.0", optional = true }
 mcp-hybrid-search-common = { path = "../common" }
 
 # CLI
@@ -22,7 +30,7 @@ serde_json = "1"
 
 # Search engines
 qdrant-client = "1"
-tantivy = "0.22"
+tantivy = "0.25"
 
 # HTTP client (for embedding API)
 reqwest = { version = "0.12", features = ["json"] }
