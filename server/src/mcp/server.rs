@@ -61,11 +61,7 @@ impl McpServer {
         JsonRpcResponse::success(id, json!({ "tools": tools }))
     }
 
-    async fn handle_tools_call(
-        &self,
-        id: Option<Value>,
-        params: Option<Value>,
-    ) -> JsonRpcResponse {
+    async fn handle_tools_call(&self, id: Option<Value>, params: Option<Value>) -> JsonRpcResponse {
         let params = match params {
             Some(p) => p,
             None => {
@@ -73,10 +69,7 @@ impl McpServer {
             }
         };
 
-        let tool_name = params
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let tool_name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
 
         let arguments = params.get("arguments").cloned().unwrap_or(json!({}));
 

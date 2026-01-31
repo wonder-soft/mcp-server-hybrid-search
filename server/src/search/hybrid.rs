@@ -28,8 +28,7 @@ impl HybridSearcher {
         let query_embedding = embedding::get_embedding(config, query).await?;
 
         // Vector search (top 30)
-        let vector_results =
-            qdrant_search::search(config, &query_embedding, 30, filters).await?;
+        let vector_results = qdrant_search::search(config, &query_embedding, 30, filters).await?;
 
         // BM25 search (top 30)
         let bm25_results = tantivy_search::search(config, query, 30, filters)?;

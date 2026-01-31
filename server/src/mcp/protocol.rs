@@ -29,10 +29,13 @@ pub struct JsonRpcError {
 }
 
 // JSON-RPC error codes
+#[allow(dead_code)]
 pub const PARSE_ERROR: i32 = -32700;
+#[allow(dead_code)]
 pub const INVALID_REQUEST: i32 = -32600;
 pub const METHOD_NOT_FOUND: i32 = -32601;
 pub const INVALID_PARAMS: i32 = -32602;
+#[allow(dead_code)]
 pub const INTERNAL_ERROR: i32 = -32603;
 
 impl JsonRpcResponse {
@@ -56,5 +59,45 @@ impl JsonRpcResponse {
                 data: None,
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_success_response_serialization() {
+        let resp = JsonRpcResponse::success(Some(json!(1)), json!({"status": "ok"}));
+        let json_str = serde_json::to_string(&resp).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(parsed["jsonrpc"], "2.0");
+        assert_eq!(parsed["id"], 1);
+        assert_eq!(parsed["result"]["status"], "ok");
+        assert!(parsed.get("error").is_none());
+    }
+
+    #[test]
+    fn test_error_response_serialization() {
+        let resp = JsonRpcResponse::error(Some(json!(2)), METHOD_NOT_FOUND, "not found");
+        let json_str = serde_json::to_string(&resp).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(parsed["error"]["code"], -32601);
+        assert_eq!(parsed["error"]["message"], "not found");
+        assert!(parsed.get("result").is_none());
+    }
+
+    #[test]
+    fn test_request_deserialization() {
+        let json_str = r#"{
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list",
+            "params": null
+        }"#;
+        let req: JsonRpcRequest = serde_json::from_str(json_str).unwrap();
+        assert_eq!(req.method, "tools/list");
+        assert_eq!(req.id, Some(json!(1)));
     }
 }

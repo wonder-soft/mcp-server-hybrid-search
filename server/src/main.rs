@@ -36,9 +36,8 @@ async fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                EnvFilter::new("info,mcp_server_hybrid_search=debug")
-            }),
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("info,mcp_server_hybrid_search=debug")),
         )
         .init();
 
@@ -76,11 +75,7 @@ async fn sse_handler(
     let session_id = uuid::Uuid::new_v4().to_string();
     let (tx, mut rx) = mpsc::channel::<String>(100);
 
-    state
-        .sessions
-        .write()
-        .await
-        .insert(session_id.clone(), tx);
+    state.sessions.write().await.insert(session_id.clone(), tx);
 
     tracing::info!("SSE connection established: {}", session_id);
 
