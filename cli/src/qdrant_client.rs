@@ -169,6 +169,13 @@ pub async fn get_chunk(config: &AppConfig, chunk_id: &str) -> Result<Option<Chun
     }
 }
 
+/// Delete the Qdrant collection.
+pub async fn delete_collection(config: &AppConfig) -> Result<()> {
+    let client = Qdrant::from_url(&config.qdrant_url).build()?;
+    client.delete_collection(&config.collection_name).await?;
+    Ok(())
+}
+
 /// Get collection point count.
 pub async fn get_collection_info(config: &AppConfig) -> Result<u64> {
     let client = Qdrant::from_url(&config.qdrant_url).build()?;

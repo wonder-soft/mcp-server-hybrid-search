@@ -57,6 +57,20 @@ enum Commands {
         #[arg(long)]
         index_dir: Option<String>,
     },
+    /// Reset all indexes (Qdrant collection, Tantivy index, ingest state)
+    Reset {
+        /// Qdrant URL (overrides config)
+        #[arg(long)]
+        qdrant: Option<String>,
+
+        /// Tantivy index directory (overrides config)
+        #[arg(long)]
+        index_dir: Option<String>,
+
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+    },
     /// Search documents (debug/testing)
     Search {
         /// Search query
@@ -117,6 +131,19 @@ async fn main() -> anyhow::Result<()> {
             let sources = resolve_sources(sources);
             ingest::run_ingest(&config, &sources).await?;
         }
+        Commands::Reset {
+            qdrant,
+            index_dir,
+            force,
+        } => {
+            if let Some(url) = qdrant {
+                config.qdrant_url = url;
+            }
+            if let Some(dir) = index_dir {
+                config.tantivy_index_dir = dir;
+            }
+            run_reset(&config, force).await?;
+        }
         Commands::Status { qdrant, index_dir } => {
             if let Some(url) = qdrant {
                 config.qdrant_url = url;
@@ -142,6 +169,54 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// Reset all indexes and ingest state.
+async fn run_reset(config: &AppConfig, force: bool) -> anyhow::Result<()> {
+    if !force {
+        println!("This will delete:");
+        println!("  - Qdrant collection '{}'", config.collection_name);
+        println!("  - Tantivy index at {}", config.tantivy_index_dir);
+        println!("  - Ingest state file");
+        println!();
+        print!("Are you sure? [y/N] ");
+        use std::io::Write;
+        std::io::stdout().flush()?;
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Cancelled.");
+            return Ok(());
+        }
+    }
+
+    // Delete Qdrant collection
+    match qdrant_client::delete_collection(config).await {
+        Ok(()) => println!("Deleted Qdrant collection '{}'", config.collection_name),
+        Err(e) => println!("Qdrant: {}", e),
+    }
+
+    // Delete Tantivy index directory
+    let tantivy_path = std::path::Path::new(&config.tantivy_index_dir);
+    if tantivy_path.exists() {
+        std::fs::remove_dir_all(tantivy_path)?;
+        println!("Deleted Tantivy index at {}", config.tantivy_index_dir);
+    } else {
+        println!("Tantivy index not found (already clean)");
+    }
+
+    // Delete ingest state file
+    let state_parent = tantivy_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let state_file = state_parent.join("ingest_state.json");
+    if state_file.exists() {
+        std::fs::remove_file(&state_file)?;
+        println!("Deleted ingest state file");
+    }
+
+    println!("\nReset complete. Run `ragctl ingest` to re-index.");
     Ok(())
 }
 
