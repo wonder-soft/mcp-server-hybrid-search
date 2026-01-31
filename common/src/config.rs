@@ -118,3 +118,48 @@ impl AppConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let config = AppConfig::default();
+        assert_eq!(config.qdrant_url, "http://localhost:6334");
+        assert_eq!(config.collection_name, "docs");
+        assert_eq!(config.chunk_size, 1000);
+        assert_eq!(config.chunk_overlap, 200);
+        assert_eq!(config.listen_port, 7070);
+        assert_eq!(config.embedding_model, "text-embedding-3-small");
+        assert_eq!(config.embedding_dimension, 1536);
+    }
+
+    #[test]
+    fn test_load_nonexistent_returns_default() {
+        let config = AppConfig::load(Some("/nonexistent/path/config.toml")).unwrap();
+        assert_eq!(config.listen_port, 7070);
+    }
+
+    #[test]
+    fn test_parse_partial_toml() {
+        let toml_str = r#"
+            listen_port = 8080
+            chunk_size = 500
+        "#;
+        let config: AppConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.listen_port, 8080);
+        assert_eq!(config.chunk_size, 500);
+        // Defaults for unspecified fields
+        assert_eq!(config.collection_name, "docs");
+        assert_eq!(config.embedding_dimension, 1536);
+    }
+
+    #[test]
+    fn test_default_source_dir() {
+        let dir = AppConfig::default_source_dir();
+        let dir_str = dir.to_string_lossy();
+        assert!(dir_str.contains("mcp-hybrid-search"));
+        assert!(dir_str.contains(".local/share"));
+    }
+}

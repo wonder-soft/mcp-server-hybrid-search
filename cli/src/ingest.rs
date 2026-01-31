@@ -142,42 +142,49 @@ pub async fn run_ingest(config: &AppConfig, sources: &[String]) -> Result<()> {
             continue;
         }
 
-        // Get embeddings for all chunks in this batch
-        let texts: Vec<String> = all_chunks.iter().map(|c| c.text.clone()).collect();
-
-        // Embed in sub-batches of 20 (OpenAI limit considerations)
+        // Get embeddings for all chunks in this batch.
+        // We embed in sub-batches and collect only successfully embedded chunks.
         let embed_batch_size = 20;
-        let mut all_embeddings = Vec::new();
+        let mut embedded_chunks: Vec<ChunkPayload> = Vec::new();
+        let mut all_embeddings: Vec<Vec<f32>> = Vec::new();
 
-        for text_batch in texts.chunks(embed_batch_size) {
-            match embedding::get_embeddings(config, text_batch).await {
+        for (sub_chunks, text_batch) in chunk_sub_batches(&all_chunks, embed_batch_size) {
+            match embedding::get_embeddings(config, &text_batch).await {
                 Ok(embeddings) => {
+                    embedded_chunks.extend(sub_chunks.to_vec());
                     all_embeddings.extend(embeddings);
                 }
                 Err(e) => {
-                    tracing::error!("Embedding error: {}", e);
-                    // Skip this entire sub-batch
-                    for _ in 0..text_batch.len() {
-                        all_embeddings.push(vec![0.0; config.embedding_dimension]);
-                    }
+                    tracing::error!(
+                        "Embedding error (skipping {} chunks): {}",
+                        sub_chunks.len(),
+                        e
+                    );
                     total_errors += 1;
                 }
             }
         }
 
+        if embedded_chunks.is_empty() {
+            tracing::warn!("No chunks were successfully embedded in this batch");
+            continue;
+        }
+
         // Upsert to Qdrant
-        if let Err(e) = qdrant_client::upsert_chunks(config, &all_chunks, &all_embeddings).await {
+        if let Err(e) =
+            qdrant_client::upsert_chunks(config, &embedded_chunks, &all_embeddings).await
+        {
             tracing::error!("Qdrant upsert error: {}", e);
             total_errors += 1;
         }
 
-        // Index in Tantivy
+        // Index in Tantivy (all chunks, not just embedded — BM25 doesn't need vectors)
         if let Err(e) = tantivy_index::index_chunks(config, &all_chunks) {
             tracing::error!("Tantivy index error: {}", e);
             total_errors += 1;
         }
 
-        total_chunks += all_chunks.len();
+        total_chunks += embedded_chunks.len();
         tracing::info!(
             "Processed batch: {} chunks (total: {})",
             all_chunks.len(),
@@ -202,12 +209,23 @@ pub async fn run_ingest(config: &AppConfig, sources: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Split chunks into sub-batches for embedding, returning (chunk_slice, texts) pairs.
+fn chunk_sub_batches(
+    chunks: &[ChunkPayload],
+    batch_size: usize,
+) -> Vec<(&[ChunkPayload], Vec<String>)> {
+    chunks
+        .chunks(batch_size)
+        .map(|sub| {
+            let texts: Vec<String> = sub.iter().map(|c| c.text.clone()).collect();
+            (sub, texts)
+        })
+        .collect()
+}
+
 /// Check if markitdown CLI is available.
 fn check_markitdown() -> bool {
-    Command::new("markitdown")
-        .arg("--help")
-        .output()
-        .is_ok()
+    Command::new("markitdown").arg("--help").output().is_ok()
 }
 
 /// Convert a file to markdown text using markitdown CLI.
@@ -361,4 +379,66 @@ pub fn rrf_merge(
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_result(id: &str) -> SearchResult {
+        SearchResult {
+            chunk_id: id.to_string(),
+            score: 0.0,
+            title: format!("Title {}", id),
+            source_path: "/test".to_string(),
+            source_type: "md".to_string(),
+            snippet: "snippet".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_rrf_merge_empty() {
+        let result = rrf_merge(&[], &[], 10);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_rrf_merge_single_source() {
+        let vec_results = vec![make_result("a"), make_result("b")];
+        let result = rrf_merge(&vec_results, &[], 10);
+        assert_eq!(result.len(), 2);
+        // First rank should have higher score
+        assert!(result[0].score > result[1].score);
+    }
+
+    #[test]
+    fn test_rrf_merge_overlap_boosted() {
+        // "a" appears in both -> should be ranked highest
+        let vec_results = vec![make_result("a"), make_result("b")];
+        let bm25_results = vec![make_result("a"), make_result("c")];
+        let result = rrf_merge(&vec_results, &bm25_results, 10);
+        assert_eq!(result[0].chunk_id, "a");
+        // "a" should have roughly double the score of "b" or "c"
+        assert!(result[0].score > result[1].score);
+    }
+
+    #[test]
+    fn test_rrf_merge_top_k_limit() {
+        let vec_results: Vec<SearchResult> =
+            (0..20).map(|i| make_result(&format!("v{}", i))).collect();
+        let bm25_results: Vec<SearchResult> =
+            (0..20).map(|i| make_result(&format!("b{}", i))).collect();
+        let result = rrf_merge(&vec_results, &bm25_results, 5);
+        assert_eq!(result.len(), 5);
+    }
+
+    #[test]
+    fn test_rrf_merge_scores_are_positive() {
+        let vec_results = vec![make_result("a")];
+        let bm25_results = vec![make_result("b")];
+        let result = rrf_merge(&vec_results, &bm25_results, 10);
+        for r in &result {
+            assert!(r.score > 0.0);
+        }
+    }
 }

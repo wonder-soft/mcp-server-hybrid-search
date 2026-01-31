@@ -230,10 +230,7 @@ fn resolve_sources(sources: Vec<String>) -> Vec<String> {
     let default_str = default_dir.to_string_lossy().to_string();
 
     if !default_dir.exists() {
-        tracing::warn!(
-            "Default source directory does not exist: {}",
-            default_str
-        );
+        tracing::warn!("Default source directory does not exist: {}", default_str);
         tracing::info!("Run `ragctl init` to create it, or specify --source explicitly.");
     } else {
         tracing::info!("Using default source directory: {}", default_str);
@@ -262,10 +259,7 @@ fn run_init(config: &AppConfig) -> anyhow::Result<()> {
         );
     } else {
         std::fs::create_dir_all(tantivy_dir)?;
-        println!(
-            "Created Tantivy index directory: {}",
-            tantivy_dir.display()
-        );
+        println!("Created Tantivy index directory: {}", tantivy_dir.display());
     }
 
     println!();
@@ -280,7 +274,10 @@ fn run_init(config: &AppConfig) -> anyhow::Result<()> {
 
 async fn run_status(config: &AppConfig) -> anyhow::Result<()> {
     println!("=== Index Status ===");
-    println!("Source directory: {}", AppConfig::default_source_dir().display());
+    println!(
+        "Source directory: {}",
+        AppConfig::default_source_dir().display()
+    );
 
     // Qdrant status
     match qdrant_client::get_collection_info(config).await {

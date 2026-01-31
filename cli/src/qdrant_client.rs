@@ -2,9 +2,8 @@ use anyhow::Result;
 use mcp_hybrid_search_common::config::AppConfig;
 use mcp_hybrid_search_common::types::{ChunkPayload, SearchFilters, SearchResult};
 use qdrant_client::qdrant::{
-    Condition, CreateCollectionBuilder, Distance, Filter, PointStruct,
-    ScalarQuantizationBuilder, SearchPointsBuilder, VectorParamsBuilder,
-    GetPointsBuilder, PointId, UpsertPointsBuilder,
+    Condition, CreateCollectionBuilder, Distance, Filter, GetPointsBuilder, PointId, PointStruct,
+    ScalarQuantizationBuilder, SearchPointsBuilder, UpsertPointsBuilder, VectorParamsBuilder,
 };
 use qdrant_client::Qdrant;
 use serde_json::Value;
@@ -14,27 +13,20 @@ use uuid::Uuid;
 pub async fn ensure_collection(config: &AppConfig) -> Result<()> {
     let client = Qdrant::from_url(&config.qdrant_url).build()?;
 
-    let exists = client
-        .collection_exists(&config.collection_name)
-        .await?;
+    let exists = client.collection_exists(&config.collection_name).await?;
 
     if !exists {
         client
             .create_collection(
                 CreateCollectionBuilder::new(&config.collection_name)
-                    .vectors_config(
-                        VectorParamsBuilder::new(
-                            config.embedding_dimension as u64,
-                            Distance::Cosine,
-                        ),
-                    )
+                    .vectors_config(VectorParamsBuilder::new(
+                        config.embedding_dimension as u64,
+                        Distance::Cosine,
+                    ))
                     .quantization_config(ScalarQuantizationBuilder::default()),
             )
             .await?;
-        tracing::info!(
-            "Created Qdrant collection '{}'",
-            config.collection_name
-        );
+        tracing::info!("Created Qdrant collection '{}'", config.collection_name);
     } else {
         tracing::info!(
             "Qdrant collection '{}' already exists",
@@ -61,8 +53,7 @@ pub async fn upsert_chunks(
             let payload_map: std::collections::HashMap<String, Value> =
                 serde_json::from_value(payload).unwrap();
 
-            let id = Uuid::parse_str(&chunk.chunk_id)
-                .unwrap_or_else(|_| Uuid::new_v4());
+            let id = Uuid::parse_str(&chunk.chunk_id).unwrap_or_else(|_| Uuid::new_v4());
 
             PointStruct::new(id.to_string(), emb.clone(), payload_map)
         })
@@ -71,9 +62,10 @@ pub async fn upsert_chunks(
     // Upsert in batches of 100
     for batch in points.chunks(100) {
         client
-            .upsert_points(
-                UpsertPointsBuilder::new(&config.collection_name, batch.to_vec())
-            )
+            .upsert_points(UpsertPointsBuilder::new(
+                &config.collection_name,
+                batch.to_vec(),
+            ))
             .await?;
     }
 
@@ -135,19 +127,14 @@ pub async fn search(
 }
 
 /// Get a chunk by its chunk_id from Qdrant.
+#[allow(dead_code)]
 pub async fn get_chunk(config: &AppConfig, chunk_id: &str) -> Result<Option<ChunkPayload>> {
     let client = Qdrant::from_url(&config.qdrant_url).build()?;
 
     let point_id: PointId = chunk_id.to_string().into();
 
     let response = client
-        .get_points(
-            GetPointsBuilder::new(
-                &config.collection_name,
-                &[point_id],
-            )
-            .with_payload(true),
-        )
+        .get_points(GetPointsBuilder::new(&config.collection_name, &[point_id]).with_payload(true))
         .await?;
 
     if let Some(point) = response.result.first() {
@@ -157,9 +144,7 @@ pub async fn get_chunk(config: &AppConfig, chunk_id: &str) -> Result<Option<Chun
             source_path: get_payload_str(payload, "source_path"),
             source_type: get_payload_str(payload, "source_type"),
             title: get_payload_str(payload, "title"),
-            chunk_index: get_payload_str(payload, "chunk_index")
-                .parse()
-                .unwrap_or(0),
+            chunk_index: get_payload_str(payload, "chunk_index").parse().unwrap_or(0),
             text: get_payload_str(payload, "text"),
             updated_at: get_payload_str(payload, "updated_at"),
         };
@@ -181,7 +166,10 @@ pub async fn get_collection_info(config: &AppConfig) -> Result<u64> {
     let client = Qdrant::from_url(&config.qdrant_url).build()?;
 
     let info = client.collection_info(&config.collection_name).await?;
-    Ok(info.result.map(|r| r.points_count.unwrap_or(0)).unwrap_or(0))
+    Ok(info
+        .result
+        .map(|r| r.points_count.unwrap_or(0))
+        .unwrap_or(0))
 }
 
 fn get_payload_str(

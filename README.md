@@ -1,5 +1,8 @@
 # mcp-server-hybrid-search
 
+[![CI](https://github.com/wonder-soft/mcp-server-hybrid-search/actions/workflows/ci.yml/badge.svg)](https://github.com/wonder-soft/mcp-server-hybrid-search/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 MCP Server for hybrid document search (Qdrant vector search + Tantivy BM25) with SSE transport.
 
 ## Architecture

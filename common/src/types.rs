@@ -52,3 +52,69 @@ pub fn truncate_snippet(text: &str, max_chars: usize) -> String {
         format!("{}...", truncated)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_truncate_short_text() {
+        assert_eq!(truncate_snippet("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_exact_length() {
+        let text = "a".repeat(10);
+        assert_eq!(truncate_snippet(&text, 10), text);
+    }
+
+    #[test]
+    fn test_truncate_long_text() {
+        let text = "a".repeat(20);
+        let result = truncate_snippet(&text, 10);
+        assert_eq!(result, format!("{}...", "a".repeat(10)));
+    }
+
+    #[test]
+    fn test_truncate_japanese() {
+        let text = "あいうえおかきくけこさしすせそ"; // 15 chars
+        let result = truncate_snippet(&text, 5);
+        assert_eq!(result, "あいうえお...");
+    }
+
+    #[test]
+    fn test_truncate_mixed_multibyte() {
+        let text = "Hello世界！こんにちは";
+        let result = truncate_snippet(&text, 8);
+        assert_eq!(result, "Hello世界！...");
+    }
+
+    #[test]
+    fn test_truncate_empty() {
+        assert_eq!(truncate_snippet("", 10), "");
+    }
+
+    #[test]
+    fn test_search_filters_default() {
+        let f = SearchFilters::default();
+        assert!(f.source_type.is_none());
+        assert!(f.path_prefix.is_none());
+    }
+
+    #[test]
+    fn test_chunk_payload_serialization() {
+        let payload = ChunkPayload {
+            chunk_id: "test-id".to_string(),
+            source_path: "/path/to/file.md".to_string(),
+            source_type: "md".to_string(),
+            title: "Test".to_string(),
+            chunk_index: 0,
+            text: "content".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let deserialized: ChunkPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.chunk_id, "test-id");
+        assert_eq!(deserialized.chunk_index, 0);
+    }
+}

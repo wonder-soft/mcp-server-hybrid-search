@@ -1,9 +1,7 @@
 use anyhow::Result;
 use mcp_hybrid_search_common::config::AppConfig;
 use mcp_hybrid_search_common::types::{ChunkDetail, ChunkMetadata, SearchFilters, SearchResult};
-use qdrant_client::qdrant::{
-    Condition, Filter, GetPointsBuilder, PointId, SearchPointsBuilder,
-};
+use qdrant_client::qdrant::{Condition, Filter, GetPointsBuilder, PointId, SearchPointsBuilder};
 use qdrant_client::Qdrant;
 
 pub async fn search(
@@ -64,10 +62,7 @@ pub async fn get_chunk(config: &AppConfig, chunk_id: &str) -> Result<Option<Chun
     let point_id: PointId = chunk_id.to_string().into();
 
     let response = client
-        .get_points(
-            GetPointsBuilder::new(&config.collection_name, &[point_id])
-                .with_payload(true),
-        )
+        .get_points(GetPointsBuilder::new(&config.collection_name, &[point_id]).with_payload(true))
         .await?;
 
     if let Some(point) = response.result.first() {
