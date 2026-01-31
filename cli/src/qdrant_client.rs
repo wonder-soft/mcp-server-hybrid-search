@@ -239,6 +239,27 @@ pub async fn export_all_chunks(config: &AppConfig) -> Result<Vec<ExportedChunk>>
     Ok(all_chunks)
 }
 
+/// List all Qdrant collections with their point counts.
+pub async fn list_collections(config: &AppConfig) -> Result<Vec<(String, u64)>> {
+    let client = Qdrant::from_url(&config.qdrant_url).build()?;
+    let response = client.list_collections().await?;
+
+    let mut results = Vec::new();
+    for collection in &response.collections {
+        let name = &collection.name;
+        let count = match client.collection_info(name).await {
+            Ok(info) => info
+                .result
+                .map(|r| r.points_count.unwrap_or(0))
+                .unwrap_or(0),
+            Err(_) => 0,
+        };
+        results.push((name.clone(), count));
+    }
+
+    Ok(results)
+}
+
 fn get_payload_str(
     payload: &std::collections::HashMap<String, qdrant_client::qdrant::Value>,
     key: &str,

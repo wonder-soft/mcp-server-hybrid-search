@@ -76,6 +76,7 @@ impl McpServer {
         let result = match ToolName::parse(tool_name) {
             Some(ToolName::Search) => self.execute_search(arguments).await,
             Some(ToolName::Get) => self.execute_get(arguments).await,
+            Some(ToolName::GetProjectInfo) => self.execute_get_project_info().await,
             None => {
                 return JsonRpcResponse::error(
                     id,
@@ -110,6 +111,23 @@ impl McpServer {
 
         let output = json!({
             "results": results
+        });
+
+        Ok(ToolResult::text(serde_json::to_string_pretty(&output)?))
+    }
+
+    async fn execute_get_project_info(&self) -> anyhow::Result<ToolResult> {
+        let doc_count = search::qdrant_search::get_collection_count(&self.config)
+            .await
+            .unwrap_or(0);
+
+        let output = json!({
+            "collection_name": self.config.collection_name,
+            "document_count": doc_count,
+            "tantivy_index_dir": self.config.tantivy_index_dir,
+            "embedding_provider": self.config.embedding_provider,
+            "embedding_model": self.config.embedding_model,
+            "embedding_dimension": self.config.embedding_dimension,
         });
 
         Ok(ToolResult::text(serde_json::to_string_pretty(&output)?))

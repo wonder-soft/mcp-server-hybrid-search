@@ -168,6 +168,35 @@ This populates both Qdrant (vectors) and Tantivy (BM25 index) from the export fi
 ragctl search --query "your search query" --top-k 10
 ```
 
+## Multi-Project Support
+
+Use the `--project` flag to isolate collections per project. When specified, the Qdrant collection name and Tantivy index directory are overridden:
+
+```bash
+# Ingest into project "my-proj"
+ragctl --project my-proj ingest --source /path/to/docs
+
+# Check status of project "my-proj"
+ragctl --project my-proj status
+
+# Start MCP server for project "my-proj"
+mcp-server-hybrid-search --project my-proj
+```
+
+When `--project my-proj` is specified:
+- Qdrant collection name → `"my-proj"`
+- Tantivy index dir → `~/.mcp-hybrid-search/tantivy/my-proj/`
+
+Without `--project`, the defaults from `config.toml` are used (backward compatible).
+
+### List projects
+
+```bash
+ragctl list-projects
+```
+
+Lists all Qdrant collections with their point counts.
+
 ## MCP Tools
 
 ### search
@@ -187,6 +216,20 @@ Retrieve full content of a document chunk.
 
 **Input:**
 - `chunk_id` (string, required): Chunk identifier
+
+### get_project_info
+
+Get information about the current project configuration and index status.
+
+**Input:** None required.
+
+**Output:** JSON object with:
+- `collection_name` (string): Current Qdrant collection name
+- `document_count` (number): Number of indexed document chunks
+- `tantivy_index_dir` (string): Tantivy index directory path
+- `embedding_provider` (string): Embedding provider name
+- `embedding_model` (string): Embedding model name
+- `embedding_dimension` (number): Embedding vector dimension
 
 ## Configuration
 

@@ -1,6 +1,6 @@
 mod embedding;
 mod hybrid;
-mod qdrant_search;
+pub mod qdrant_search;
 mod tantivy_search;
 
 pub use hybrid::HybridSearcher;

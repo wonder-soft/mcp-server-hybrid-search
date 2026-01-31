@@ -102,6 +102,22 @@ impl AppConfig {
         home.join(".local").join("share").join("mcp-hybrid-search")
     }
 
+    /// Override collection name and tantivy index dir for project isolation.
+    /// When `project` is `Some("my-proj")`:
+    /// - `collection_name` → `"my-proj"`
+    /// - `tantivy_index_dir` → `~/.mcp-hybrid-search/tantivy/my-proj/`
+    pub fn with_project(mut self, project: Option<&str>) -> Self {
+        if let Some(proj) = project {
+            self.collection_name = proj.to_string();
+            let base = dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".mcp-hybrid-search")
+                .join("tantivy");
+            self.tantivy_index_dir = base.join(proj).to_string_lossy().to_string();
+        }
+        self
+    }
+
     pub fn load(path: Option<&str>) -> anyhow::Result<Self> {
         let config_path = if let Some(p) = path {
             PathBuf::from(p)
@@ -160,6 +176,27 @@ mod tests {
         assert_eq!(config.chunk_size, 500);
         // Defaults for unspecified fields
         assert_eq!(config.collection_name, "docs");
+        assert_eq!(config.embedding_dimension, 1536);
+    }
+
+    #[test]
+    fn test_with_project_none() {
+        let config = AppConfig::default();
+        let original_collection = config.collection_name.clone();
+        let original_tantivy = config.tantivy_index_dir.clone();
+        let config = config.with_project(None);
+        assert_eq!(config.collection_name, original_collection);
+        assert_eq!(config.tantivy_index_dir, original_tantivy);
+    }
+
+    #[test]
+    fn test_with_project_some() {
+        let config = AppConfig::default().with_project(Some("my-proj"));
+        assert_eq!(config.collection_name, "my-proj");
+        assert!(config.tantivy_index_dir.contains("tantivy"));
+        assert!(config.tantivy_index_dir.ends_with("my-proj"));
+        // Other fields remain default
+        assert_eq!(config.chunk_size, 1000);
         assert_eq!(config.embedding_dimension, 1536);
     }
 

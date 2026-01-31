@@ -15,6 +15,10 @@ struct Cli {
     #[arg(long, global = true)]
     config: Option<String>,
 
+    /// Project name for collection isolation
+    #[arg(long, global = true)]
+    project: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -95,6 +99,12 @@ enum Commands {
         #[arg(long)]
         index_dir: Option<String>,
     },
+    /// List all projects (Qdrant collections)
+    ListProjects {
+        /// Qdrant URL (overrides config)
+        #[arg(long)]
+        qdrant: Option<String>,
+    },
     /// Search documents (debug/testing)
     Search {
         /// Search query
@@ -127,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     let mut config = AppConfig::load(cli.config.as_deref())?;
+    config = config.with_project(cli.project.as_deref());
 
     match cli.command {
         Commands::Init => {
@@ -195,6 +206,12 @@ async fn main() -> anyhow::Result<()> {
                 config.tantivy_index_dir = dir;
             }
             run_import(&config, &input).await?;
+        }
+        Commands::ListProjects { qdrant } => {
+            if let Some(url) = qdrant {
+                config.qdrant_url = url;
+            }
+            run_list_projects(&config).await?;
         }
         Commands::Search {
             query,
@@ -403,6 +420,22 @@ async fn run_import(config: &AppConfig, input_path: &str) -> anyhow::Result<()> 
         "Import complete: {} chunks imported to Qdrant and Tantivy",
         total_imported
     );
+    Ok(())
+}
+
+async fn run_list_projects(config: &AppConfig) -> anyhow::Result<()> {
+    let collections = qdrant_client::list_collections(config).await?;
+
+    if collections.is_empty() {
+        println!("No collections found.");
+        return Ok(());
+    }
+
+    println!("=== Collections (Projects) ===");
+    for (name, count) in &collections {
+        println!("  {} — {} points", name, count);
+    }
+
     Ok(())
 }
 
