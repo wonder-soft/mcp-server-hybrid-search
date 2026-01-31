@@ -1,6 +1,8 @@
 mod mcp;
 mod search;
 
+use clap::Parser;
+
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -20,6 +22,21 @@ use tokio::sync::{mpsc, RwLock};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
+
+#[derive(Parser)]
+#[command(
+    name = "mcp-server-hybrid-search",
+    about = "MCP server for hybrid document search"
+)]
+struct Args {
+    /// Path to config.toml
+    #[arg(long)]
+    config: Option<String>,
+
+    /// Project name for collection isolation
+    #[arg(long)]
+    project: Option<String>,
+}
 
 type SessionId = String;
 type Sessions = Arc<RwLock<HashMap<SessionId, mpsc::Sender<String>>>>;
@@ -41,8 +58,14 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let config = AppConfig::load(None)?;
+    let args = Args::parse();
+    let config = AppConfig::load(args.config.as_deref())?;
+    let config = config.with_project(args.project.as_deref());
     let listen_port = config.listen_port;
+
+    if let Some(ref proj) = args.project {
+        tracing::info!("Project: {}", proj);
+    }
 
     let mcp_server = mcp::server::McpServer::new(config.clone()).await?;
 

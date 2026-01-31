@@ -82,6 +82,16 @@ pub async fn get_chunk(config: &AppConfig, chunk_id: &str) -> Result<Option<Chun
     }
 }
 
+/// Get the number of points in the collection.
+pub async fn get_collection_count(config: &AppConfig) -> Result<u64> {
+    let client = Qdrant::from_url(&config.qdrant_url).build()?;
+    let info = client.collection_info(&config.collection_name).await?;
+    Ok(info
+        .result
+        .map(|r| r.points_count.unwrap_or(0))
+        .unwrap_or(0))
+}
+
 fn get_str(
     payload: &std::collections::HashMap<String, qdrant_client::qdrant::Value>,
     key: &str,

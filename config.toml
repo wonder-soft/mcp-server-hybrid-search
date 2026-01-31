@@ -4,9 +4,11 @@
 qdrant_url = "http://localhost:6334"
 
 # Qdrant collection name
+# Overridden by --project flag (e.g. --project my-proj sets collection_name = "my-proj")
 collection_name = "docs"
 
 # Tantivy index directory
+# Overridden by --project flag (e.g. --project my-proj sets tantivy_index_dir = "~/.mcp-hybrid-search/tantivy/my-proj")
 # tantivy_index_dir = "~/.mcp-hybrid-search/tantivy"
 
 # Chunk settings

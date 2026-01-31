@@ -48,6 +48,7 @@ impl ToolResult {
 pub enum ToolName {
     Search,
     Get,
+    GetProjectInfo,
 }
 
 impl ToolName {
@@ -55,6 +56,7 @@ impl ToolName {
         match name {
             "search" => Some(Self::Search),
             "get" => Some(Self::Get),
+            "get_project_info" => Some(Self::GetProjectInfo),
             _ => None,
         }
     }
@@ -123,6 +125,15 @@ pub fn list_tools() -> Vec<Tool> {
                     }
                 },
                 "required": ["chunk_id"]
+            }),
+        },
+        Tool {
+            name: "get_project_info".to_string(),
+            description: "Get information about the current project: collection name, document count, tantivy index directory, and embedding settings.".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {},
+                "required": []
             }),
         },
     ]

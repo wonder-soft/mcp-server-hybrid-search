@@ -19,5 +19,8 @@ Cargo.lock
 # Tantivy index (local data)
 tantivy_index/
 
+# Fastembed cache
+.fastembed_cache/
+
 # Logs
 *.log
