@@ -92,6 +92,8 @@ cp ~/data/*.xlsx ~/.local/share/mcp-hybrid-search/
 
 The server will listen on `http://localhost:7070`.
 
+> **Note:** When using `embedding_provider = "openai"` (default), the server requires `OPENAI_API_KEY` at runtime because each search query is converted to an embedding vector via the OpenAI API. Make sure the `.env` file is present in the working directory, or set the environment variable before starting the server.
+
 ### 8. Connect from Claude Code
 
 Add to your Claude Code MCP configuration:
@@ -296,6 +298,15 @@ cargo build --release --features local-embed
 ```
 
 > **Note:** Switching embedding provider changes the vector dimension. Run `ragctl reset` then `ragctl ingest` after switching.
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes (when `embedding_provider = "openai"`) | Used for embedding generation at both ingest time (CLI) and search time (server). Not needed with `local-embed`. |
+| `OPENAI_API_BASE` | No | Custom OpenAI-compatible API endpoint (default: `https://api.openai.com/v1`) |
+
+> **Important:** The `OPENAI_API_KEY` is required not only during `ragctl ingest` but also when running the MCP server, because every search query is embedded in real time via the OpenAI API. If you want to avoid this dependency, use local embeddings (`--features local-embed`).
 
 ## Search Algorithm
 
