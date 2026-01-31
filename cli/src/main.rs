@@ -71,6 +71,30 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
+    /// Export all indexed data (chunks + embeddings) to a JSON file
+    Export {
+        /// Output file path
+        #[arg(long, short)]
+        output: String,
+
+        /// Qdrant URL (overrides config)
+        #[arg(long)]
+        qdrant: Option<String>,
+    },
+    /// Import data from an exported JSON file
+    Import {
+        /// Input file path
+        #[arg(long, short)]
+        input: String,
+
+        /// Qdrant URL (overrides config)
+        #[arg(long)]
+        qdrant: Option<String>,
+
+        /// Tantivy index directory (overrides config)
+        #[arg(long)]
+        index_dir: Option<String>,
+    },
     /// Search documents (debug/testing)
     Search {
         /// Search query
@@ -152,6 +176,25 @@ async fn main() -> anyhow::Result<()> {
                 config.tantivy_index_dir = dir;
             }
             run_status(&config).await?;
+        }
+        Commands::Export { output, qdrant } => {
+            if let Some(url) = qdrant {
+                config.qdrant_url = url;
+            }
+            run_export(&config, &output).await?;
+        }
+        Commands::Import {
+            input,
+            qdrant,
+            index_dir,
+        } => {
+            if let Some(url) = qdrant {
+                config.qdrant_url = url;
+            }
+            if let Some(dir) = index_dir {
+                config.tantivy_index_dir = dir;
+            }
+            run_import(&config, &input).await?;
         }
         Commands::Search {
             query,
@@ -302,6 +345,64 @@ async fn run_status(config: &AppConfig) -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+async fn run_export(config: &AppConfig, output_path: &str) -> anyhow::Result<()> {
+    println!("Exporting data from Qdrant...");
+
+    let chunks = qdrant_client::export_all_chunks(config).await?;
+
+    if chunks.is_empty() {
+        println!("No data to export. Is the collection empty?");
+        return Ok(());
+    }
+
+    let json = serde_json::to_string_pretty(&chunks)?;
+    std::fs::write(output_path, json)?;
+
+    println!("Exported {} chunks to {}", chunks.len(), output_path);
+    Ok(())
+}
+
+async fn run_import(config: &AppConfig, input_path: &str) -> anyhow::Result<()> {
+    use mcp_hybrid_search_common::types::ExportedChunk;
+
+    let content = std::fs::read_to_string(input_path)?;
+    let chunks: Vec<ExportedChunk> = serde_json::from_str(&content)?;
+
+    if chunks.is_empty() {
+        println!("No data in the export file.");
+        return Ok(());
+    }
+
+    println!("Importing {} chunks from {}...", chunks.len(), input_path);
+
+    // Ensure Qdrant collection exists
+    qdrant_client::ensure_collection(config).await?;
+
+    // Import in batches
+    let batch_size = 10;
+    let mut total_imported = 0;
+
+    for batch in chunks.chunks(batch_size) {
+        let payloads: Vec<_> = batch.iter().map(|c| c.payload.clone()).collect();
+        let embeddings: Vec<_> = batch.iter().map(|c| c.embedding.clone()).collect();
+
+        // Upsert to Qdrant
+        qdrant_client::upsert_chunks(config, &payloads, &embeddings).await?;
+
+        // Index in Tantivy
+        tantivy_index::index_chunks(config, &payloads)?;
+
+        total_imported += batch.len();
+        tracing::info!("Imported {}/{} chunks", total_imported, chunks.len());
+    }
+
+    println!(
+        "Import complete: {} chunks imported to Qdrant and Tantivy",
+        total_imported
+    );
     Ok(())
 }
 
