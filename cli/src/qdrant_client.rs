@@ -1,9 +1,10 @@
 use anyhow::Result;
 use mcp_hybrid_search_common::config::AppConfig;
-use mcp_hybrid_search_common::types::{ChunkPayload, SearchFilters, SearchResult};
+use mcp_hybrid_search_common::types::{ChunkPayload, ExportedChunk, SearchFilters, SearchResult};
 use qdrant_client::qdrant::{
     Condition, CreateCollectionBuilder, Distance, Filter, GetPointsBuilder, PointId, PointStruct,
-    ScalarQuantizationBuilder, SearchPointsBuilder, UpsertPointsBuilder, VectorParamsBuilder,
+    ScalarQuantizationBuilder, ScrollPointsBuilder, SearchPointsBuilder, UpsertPointsBuilder,
+    VectorParamsBuilder,
 };
 use qdrant_client::Qdrant;
 use serde_json::Value;
@@ -170,6 +171,72 @@ pub async fn get_collection_info(config: &AppConfig) -> Result<u64> {
         .result
         .map(|r| r.points_count.unwrap_or(0))
         .unwrap_or(0))
+}
+
+/// Scroll all points from the collection, returning chunks with their embeddings.
+pub async fn export_all_chunks(config: &AppConfig) -> Result<Vec<ExportedChunk>> {
+    let client = Qdrant::from_url(&config.qdrant_url).build()?;
+
+    let mut all_chunks = Vec::new();
+    let mut offset: Option<PointId> = None;
+    let batch_size = 100u32;
+
+    loop {
+        let mut builder = ScrollPointsBuilder::new(&config.collection_name)
+            .with_payload(true)
+            .with_vectors(true)
+            .limit(batch_size);
+
+        if let Some(ref next_offset) = offset {
+            builder = builder.offset(next_offset.clone());
+        }
+
+        let response = client.scroll(builder).await?;
+
+        if response.result.is_empty() {
+            break;
+        }
+
+        for point in &response.result {
+            let payload = &point.payload;
+            let chunk_payload = ChunkPayload {
+                chunk_id: get_payload_str(payload, "chunk_id"),
+                source_path: get_payload_str(payload, "source_path"),
+                source_type: get_payload_str(payload, "source_type"),
+                title: get_payload_str(payload, "title"),
+                chunk_index: get_payload_str(payload, "chunk_index").parse().unwrap_or(0),
+                text: get_payload_str(payload, "text"),
+                updated_at: get_payload_str(payload, "updated_at"),
+            };
+
+            #[allow(deprecated)]
+            let embedding = point
+                .vectors
+                .as_ref()
+                .and_then(|v| {
+                    use qdrant_client::qdrant::vectors_output::VectorsOptions;
+                    match &v.vectors_options {
+                        Some(VectorsOptions::Vector(vec_output)) => Some(vec_output.data.clone()),
+                        _ => None,
+                    }
+                })
+                .unwrap_or_default();
+
+            all_chunks.push(ExportedChunk {
+                payload: chunk_payload,
+                embedding,
+            });
+        }
+
+        tracing::info!("Exported {} chunks so far...", all_chunks.len());
+
+        offset = response.next_page_offset;
+        if offset.is_none() {
+            break;
+        }
+    }
+
+    Ok(all_chunks)
 }
 
 fn get_payload_str(

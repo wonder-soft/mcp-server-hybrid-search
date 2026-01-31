@@ -140,6 +140,26 @@ Supported file types:
 ragctl status
 ```
 
+### Export data
+
+Export all indexed chunks (with embeddings) to a JSON file for sharing with other engineers:
+
+```bash
+ragctl export --output ./exported-data.json
+```
+
+The exported file contains all chunk payloads and their embedding vectors. Other engineers can import this without needing an OpenAI API key.
+
+### Import data
+
+Import previously exported data into Qdrant and Tantivy:
+
+```bash
+ragctl import --input ./exported-data.json
+```
+
+This populates both Qdrant (vectors) and Tantivy (BM25 index) from the export file.
+
 ### Search (debug)
 
 ```bash

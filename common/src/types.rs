@@ -36,6 +36,13 @@ pub struct ChunkMetadata {
     pub chunk_index: u32,
 }
 
+/// A single exported chunk with its payload and embedding vector.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExportedChunk {
+    pub payload: ChunkPayload,
+    pub embedding: Vec<f32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SearchFilters {
     pub source_type: Option<String>,
