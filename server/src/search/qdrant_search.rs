@@ -43,11 +43,7 @@ pub async fn search(
             let source_path = get_str(payload, "source_path");
             let source_type = get_str(payload, "source_type");
             let text = get_str(payload, "text");
-            let snippet = if text.len() > 200 {
-                format!("{}...", &text[..200])
-            } else {
-                text
-            };
+            let snippet = mcp_hybrid_search_common::types::truncate_snippet(&text, 200);
 
             SearchResult {
                 chunk_id,

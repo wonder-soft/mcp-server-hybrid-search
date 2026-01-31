@@ -75,11 +75,7 @@ pub fn search(
             }
         }
 
-        let snippet = if body.len() > 200 {
-            format!("{}...", &body[..200])
-        } else {
-            body
-        };
+        let snippet = mcp_hybrid_search_common::types::truncate_snippet(&body, 200);
 
         results.push(SearchResult {
             chunk_id,

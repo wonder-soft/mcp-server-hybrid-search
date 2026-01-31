@@ -41,3 +41,14 @@ pub struct SearchFilters {
     pub source_type: Option<String>,
     pub path_prefix: Option<String>,
 }
+
+/// Truncate a string to at most `max_chars` characters (UTF-8 safe).
+pub fn truncate_snippet(text: &str, max_chars: usize) -> String {
+    let char_count = text.chars().count();
+    if char_count <= max_chars {
+        text.to_string()
+    } else {
+        let truncated: String = text.chars().take(max_chars).collect();
+        format!("{}...", truncated)
+    }
+}

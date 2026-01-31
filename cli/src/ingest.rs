@@ -18,9 +18,48 @@ const TEXT_EXTENSIONS: &[&str] = &["md", "txt"];
 /// Binary/rich files that require markitdown conversion.
 const MARKITDOWN_EXTENSIONS: &[&str] = &["pdf", "xlsx", "xls", "docx", "pptx", "csv", "html"];
 
-/// All supported extensions (union of both).
-fn is_supported_extension(ext: &str) -> bool {
-    TEXT_EXTENSIONS.contains(&ext) || MARKITDOWN_EXTENSIONS.contains(&ext)
+/// Ingest state file: tracks which files have been ingested and when.
+fn state_file_path(config: &AppConfig) -> std::path::PathBuf {
+    let tantivy_parent = Path::new(&config.tantivy_index_dir)
+        .parent()
+        .unwrap_or_else(|| Path::new("."));
+    tantivy_parent.join("ingest_state.json")
+}
+
+/// State: maps file path -> last modified timestamp (as string).
+type IngestState = HashMap<String, String>;
+
+fn load_state(config: &AppConfig) -> IngestState {
+    let path = state_file_path(config);
+    if path.exists() {
+        match std::fs::read_to_string(&path) {
+            Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+            Err(_) => HashMap::new(),
+        }
+    } else {
+        HashMap::new()
+    }
+}
+
+fn save_state(config: &AppConfig, state: &IngestState) -> Result<()> {
+    let path = state_file_path(config);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(state)?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
+
+/// Get the modified time of a file as an RFC3339 string.
+fn file_modified_time(path: &str) -> Option<String> {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .map(|t| {
+            let datetime: chrono::DateTime<chrono::Utc> = t.into();
+            datetime.to_rfc3339()
+        })
 }
 
 /// Run the ingest pipeline for the given source directories.
@@ -37,27 +76,60 @@ pub async fn run_ingest(config: &AppConfig, sources: &[String]) -> Result<()> {
         );
     }
 
+    // Load previous ingest state for diff detection
+    let mut state = load_state(config);
+
     // Collect files
     let files = collect_files(sources, markitdown_available);
-    tracing::info!("Found {} files to process", files.len());
+    tracing::info!("Found {} candidate files", files.len());
 
     if files.is_empty() {
         tracing::warn!("No files found in the specified source directories");
         return Ok(());
     }
 
+    // Filter to only changed/new files
+    let total_candidates = files.len();
+    let files_to_process: Vec<String> = files
+        .into_iter()
+        .filter(|f| {
+            let current_mtime = file_modified_time(f).unwrap_or_default();
+            match state.get(f) {
+                Some(prev_mtime) if prev_mtime == &current_mtime => {
+                    tracing::debug!("Skipping unchanged file: {}", f);
+                    false
+                }
+                _ => true,
+            }
+        })
+        .collect();
+
+    let skipped = total_candidates - files_to_process.len();
+    tracing::info!(
+        "{} files need processing ({} unchanged, skipped)",
+        files_to_process.len(),
+        skipped
+    );
+
+    if files_to_process.is_empty() {
+        tracing::info!("All files are up to date. Nothing to ingest.");
+        return Ok(());
+    }
+
     let mut total_chunks = 0;
     let mut total_errors = 0;
+    let mut processed_files: Vec<String> = Vec::new();
 
     // Process files in batches
     let batch_size = 10;
-    for batch in files.chunks(batch_size) {
+    for batch in files_to_process.chunks(batch_size) {
         let mut all_chunks = Vec::new();
 
         for file_path in batch {
             match process_file(config, file_path) {
                 Ok(chunks) => {
                     all_chunks.extend(chunks);
+                    processed_files.push(file_path.clone());
                 }
                 Err(e) => {
                     tracing::error!("Error processing {}: {}", file_path, e);
@@ -113,8 +185,17 @@ pub async fn run_ingest(config: &AppConfig, sources: &[String]) -> Result<()> {
         );
     }
 
+    // Update state for successfully processed files
+    for file_path in &processed_files {
+        if let Some(mtime) = file_modified_time(file_path) {
+            state.insert(file_path.clone(), mtime);
+        }
+    }
+    save_state(config, &state)?;
+
     tracing::info!(
-        "Ingest complete: {} chunks indexed, {} errors",
+        "Ingest complete: {} files processed, {} chunks indexed, {} errors",
+        processed_files.len(),
         total_chunks,
         total_errors
     );
