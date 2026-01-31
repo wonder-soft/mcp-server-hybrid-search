@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub async fn get_embedding(config: &AppConfig, text: &str) -> Result<Vec<f32>> {
     match config.embedding_provider.as_str() {
         "openai" => get_embedding_openai(config, text).await,
-        "local" => get_embedding_local(text),
+        "local" => get_embedding_local(config, text),
         other => anyhow::bail!(
             "Unknown embedding_provider '{}'. Supported: openai, local",
             other
@@ -70,10 +70,11 @@ async fn get_embedding_openai(config: &AppConfig, text: &str) -> Result<Vec<f32>
 // --- Local provider (fastembed) ---
 
 #[cfg(feature = "local-embed")]
-fn get_embedding_local(text: &str) -> Result<Vec<f32>> {
+fn get_embedding_local(config: &AppConfig, text: &str) -> Result<Vec<f32>> {
     use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 
-    let mut model = TextEmbedding::try_new(InitOptions::new(EmbeddingModel::MultilingualE5Small))?;
+    let model_type = resolve_local_model(&config.embedding_model)?;
+    let mut model = TextEmbedding::try_new(InitOptions::new(model_type))?;
 
     // E5 models expect "query: " prefix for search queries
     let prefixed = format!("query: {}", text);
@@ -85,8 +86,21 @@ fn get_embedding_local(text: &str) -> Result<Vec<f32>> {
         .ok_or_else(|| anyhow::anyhow!("No embedding returned"))
 }
 
+#[cfg(feature = "local-embed")]
+fn resolve_local_model(model_name: &str) -> Result<fastembed::EmbeddingModel> {
+    use fastembed::EmbeddingModel;
+    match model_name {
+        "multilingual-e5-small" => Ok(EmbeddingModel::MultilingualE5Small),
+        "multilingual-e5-base" => Ok(EmbeddingModel::MultilingualE5Base),
+        _ => anyhow::bail!(
+            "Unknown local embedding model '{}'. Supported: multilingual-e5-small, multilingual-e5-base",
+            model_name
+        ),
+    }
+}
+
 #[cfg(not(feature = "local-embed"))]
-fn get_embedding_local(_text: &str) -> Result<Vec<f32>> {
+fn get_embedding_local(_config: &AppConfig, _text: &str) -> Result<Vec<f32>> {
     anyhow::bail!(
         "embedding_provider = \"local\" requires the 'local-embed' feature. \
          Build with: cargo build --features local-embed"

@@ -228,15 +228,24 @@ Language dictionaries are embedded into the binary at build time via [Lindera](h
 |----------|-------------|-------|-----------|-----------------|
 | `openai` | *(none)* | `text-embedding-3-small` | 1536 | Yes (`OPENAI_API_KEY`) |
 | `local` | `--features local-embed` | `intfloat/multilingual-e5-small` | 384 | No |
+| `local` | `--features local-embed` | `intfloat/multilingual-e5-base` | 768 | No |
 
-The local provider uses [fastembed](https://github.com/Anush008/fastembed-rs) with ONNX Runtime. The model (~100MB) is automatically downloaded and cached on first use.
+The local provider uses [fastembed](https://github.com/Anush008/fastembed-rs) with ONNX Runtime. Models are automatically downloaded and cached on first use.
 
 To use local embeddings:
 
 ```toml
-# config.toml
+# config.toml — multilingual-e5-small (lighter, faster)
 embedding_provider = "local"
+embedding_model = "multilingual-e5-small"
 embedding_dimension = 384
+```
+
+```toml
+# config.toml — multilingual-e5-base (better accuracy)
+embedding_provider = "local"
+embedding_model = "multilingual-e5-base"
+embedding_dimension = 768
 ```
 
 ```bash

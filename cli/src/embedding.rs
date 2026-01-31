@@ -75,10 +75,11 @@ async fn get_embeddings_openai(config: &AppConfig, texts: &[String]) -> Result<V
 // --- Local provider (fastembed) ---
 
 #[cfg(feature = "local-embed")]
-fn get_embeddings_local(_config: &AppConfig, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+fn get_embeddings_local(config: &AppConfig, texts: &[String]) -> Result<Vec<Vec<f32>>> {
     use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 
-    let mut model = TextEmbedding::try_new(InitOptions::new(EmbeddingModel::MultilingualE5Small))?;
+    let model_type = resolve_local_model(&config.embedding_model)?;
+    let mut model = TextEmbedding::try_new(InitOptions::new(model_type))?;
 
     // E5 models expect "passage: " prefix for documents and "query: " for queries.
     // During ingest we treat all texts as passages.
@@ -86,6 +87,19 @@ fn get_embeddings_local(_config: &AppConfig, texts: &[String]) -> Result<Vec<Vec
 
     let embeddings = model.embed(prefixed, None)?;
     Ok(embeddings)
+}
+
+#[cfg(feature = "local-embed")]
+fn resolve_local_model(model_name: &str) -> Result<fastembed::EmbeddingModel> {
+    use fastembed::EmbeddingModel;
+    match model_name {
+        "multilingual-e5-small" => Ok(EmbeddingModel::MultilingualE5Small),
+        "multilingual-e5-base" => Ok(EmbeddingModel::MultilingualE5Base),
+        _ => anyhow::bail!(
+            "Unknown local embedding model '{}'. Supported: multilingual-e5-small, multilingual-e5-base",
+            model_name
+        ),
+    }
 }
 
 #[cfg(not(feature = "local-embed"))]
