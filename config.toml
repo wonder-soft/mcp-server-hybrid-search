@@ -21,14 +21,14 @@ listen_port = 7070
 embedding_provider = "openai"
 embedding_model = "text-embedding-3-small"
 embedding_dimension = 1536
-# For local embedding with multilingual-e5-small (384 dim):
-#   embedding_provider = "local"
-#   embedding_model = "multilingual-e5-small"
-#   embedding_dimension = 384
-# For local embedding with multilingual-e5-base (768 dim, better accuracy):
+# For local embedding with multilingual-e5-base (768 dim, recommended):
 #   embedding_provider = "local"
 #   embedding_model = "multilingual-e5-base"
 #   embedding_dimension = 768
+# For local embedding with multilingual-e5-small (384 dim, lighter):
+#   embedding_provider = "local"
+#   embedding_model = "multilingual-e5-small"
+#   embedding_dimension = 384
 
 # Tokenizer for BM25 full-text search
 # Options: "default", "japanese", "korean", "chinese"
