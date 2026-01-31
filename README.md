@@ -16,7 +16,7 @@ MCP Server for hybrid document search (Qdrant vector search + Tantivy BM25) with
 
 - Rust toolchain (1.75+)
 - Docker (for Qdrant)
-- OpenAI API key (for embeddings)
+- OpenAI API key (for embeddings, not needed with `--features local-embed`)
 - Python + `markitdown` (for PDF/Excel/Word support): `pip install markitdown`
 
 ## Quick Start
@@ -37,15 +37,17 @@ cp .env.example .env
 ### 3. Build
 
 ```bash
-# Default build (English/whitespace-based BM25 tokenizer)
+# Default build (OpenAI embeddings, whitespace-based BM25 tokenizer)
 cargo build --release
 
 # With Japanese tokenizer for BM25 full-text search
 cargo build --release --features ja
 
-# Other language tokenizers
-cargo build --release --features ko   # Korean
-cargo build --release --features zh   # Chinese
+# With local embedding (no OpenAI API key needed)
+cargo build --release --features local-embed
+
+# Combine features as needed
+cargo build --release --features "ja,local-embed"
 ```
 
 ### 4. Initialize
@@ -198,6 +200,7 @@ Edit `config.toml`:
 | `chunk_size` | `1000` | Chunk size in characters |
 | `chunk_overlap` | `200` | Chunk overlap in characters |
 | `listen_port` | `7070` | MCP server port |
+| `embedding_provider` | `openai` | Embedding provider (see below) |
 | `embedding_model` | `text-embedding-3-small` | OpenAI embedding model |
 | `embedding_dimension` | `1536` | Embedding vector dimension |
 | `tokenizer` | `default` | BM25 tokenizer (see below) |
@@ -219,9 +222,41 @@ Language dictionaries are embedded into the binary at build time via [Lindera](h
 
 > **Note:** Changing the tokenizer requires rebuilding the Tantivy index. Run `ragctl reset` then `ragctl ingest` after switching tokenizers.
 
+### Embedding Provider
+
+| Provider | Feature flag | Model | Dimension | API key required |
+|----------|-------------|-------|-----------|-----------------|
+| `openai` | *(none)* | `text-embedding-3-small` | 1536 | Yes (`OPENAI_API_KEY`) |
+| `local` | `--features local-embed` | `intfloat/multilingual-e5-base` | 768 | No |
+| `local` | `--features local-embed` | `intfloat/multilingual-e5-small` | 384 | No |
+
+The local provider uses [fastembed](https://github.com/Anush008/fastembed-rs) with ONNX Runtime. Models are automatically downloaded and cached on first use.
+
+To use local embeddings:
+
+```toml
+# config.toml — multilingual-e5-base (recommended)
+embedding_provider = "local"
+embedding_model = "multilingual-e5-base"
+embedding_dimension = 768
+```
+
+```toml
+# config.toml — multilingual-e5-small (lighter, faster)
+embedding_provider = "local"
+embedding_model = "multilingual-e5-small"
+embedding_dimension = 384
+```
+
+```bash
+cargo build --release --features local-embed
+```
+
+> **Note:** Switching embedding provider changes the vector dimension. Run `ragctl reset` then `ragctl ingest` after switching.
+
 ## Search Algorithm
 
-1. Query is embedded using OpenAI embedding API
+1. Query is embedded using the configured embedding provider
 2. Qdrant vector search returns top 30 candidates
 3. Tantivy BM25 search returns top 30 candidates
 4. Results are merged using Reciprocal Rank Fusion (RRF) with k=60
