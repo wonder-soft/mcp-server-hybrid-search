@@ -88,6 +88,12 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
+    /// Default source directory for documents (~/.local/share/mcp-hybrid-search).
+    pub fn default_source_dir() -> PathBuf {
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        home.join(".local").join("share").join("mcp-hybrid-search")
+    }
+
     pub fn load(path: Option<&str>) -> anyhow::Result<Self> {
         let config_path = if let Some(p) = path {
             PathBuf::from(p)

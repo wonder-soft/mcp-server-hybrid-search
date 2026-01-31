@@ -21,10 +21,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Initialize the default source directory and data directories
+    Init,
+
     /// Ingest documents from source directories
     Ingest {
-        /// Source directories (can be specified multiple times)
-        #[arg(long = "source", required = true)]
+        /// Source directories (can be specified multiple times).
+        /// Defaults to ~/.local/share/mcp-hybrid-search if omitted.
+        #[arg(long = "source")]
         sources: Vec<String>,
 
         /// Qdrant URL (overrides config)
@@ -87,6 +91,9 @@ async fn main() -> anyhow::Result<()> {
     let mut config = AppConfig::load(cli.config.as_deref())?;
 
     match cli.command {
+        Commands::Init => {
+            run_init(&config)?;
+        }
         Commands::Ingest {
             sources,
             qdrant,
@@ -106,6 +113,8 @@ async fn main() -> anyhow::Result<()> {
             if let Some(overlap) = chunk_overlap {
                 config.chunk_overlap = overlap;
             }
+
+            let sources = resolve_sources(sources);
             ingest::run_ingest(&config, &sources).await?;
         }
         Commands::Status { qdrant, index_dir } => {
@@ -136,13 +145,75 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Resolve source directories. If none specified, use the default.
+fn resolve_sources(sources: Vec<String>) -> Vec<String> {
+    if !sources.is_empty() {
+        return sources;
+    }
+
+    let default_dir = AppConfig::default_source_dir();
+    let default_str = default_dir.to_string_lossy().to_string();
+
+    if !default_dir.exists() {
+        tracing::warn!(
+            "Default source directory does not exist: {}",
+            default_str
+        );
+        tracing::info!("Run `ragctl init` to create it, or specify --source explicitly.");
+    } else {
+        tracing::info!("Using default source directory: {}", default_str);
+    }
+
+    vec![default_str]
+}
+
+/// Initialize directories.
+fn run_init(config: &AppConfig) -> anyhow::Result<()> {
+    // Create default source directory
+    let source_dir = AppConfig::default_source_dir();
+    if source_dir.exists() {
+        println!("Source directory already exists: {}", source_dir.display());
+    } else {
+        std::fs::create_dir_all(&source_dir)?;
+        println!("Created source directory: {}", source_dir.display());
+    }
+
+    // Create tantivy index directory
+    let tantivy_dir = std::path::Path::new(&config.tantivy_index_dir);
+    if tantivy_dir.exists() {
+        println!(
+            "Tantivy index directory already exists: {}",
+            tantivy_dir.display()
+        );
+    } else {
+        std::fs::create_dir_all(tantivy_dir)?;
+        println!(
+            "Created Tantivy index directory: {}",
+            tantivy_dir.display()
+        );
+    }
+
+    println!();
+    println!("Setup complete. Place documents (md, txt, pdf, xlsx, docx, ...) in:");
+    println!("  {}", source_dir.display());
+    println!();
+    println!("Then run:");
+    println!("  ragctl ingest");
+
+    Ok(())
+}
+
 async fn run_status(config: &AppConfig) -> anyhow::Result<()> {
     println!("=== Index Status ===");
+    println!("Source directory: {}", AppConfig::default_source_dir().display());
 
     // Qdrant status
     match qdrant_client::get_collection_info(config).await {
         Ok(info) => {
-            println!("Qdrant collection '{}': {} points", config.collection_name, info);
+            println!(
+                "Qdrant collection '{}': {} points",
+                config.collection_name, info
+            );
         }
         Err(e) => {
             println!("Qdrant: error - {}", e);
@@ -169,7 +240,8 @@ async fn run_search(config: &AppConfig, query: &str, top_k: usize) -> anyhow::Re
     let query_embedding = embedding::get_embedding(config, query).await?;
 
     // Vector search
-    let vector_results = qdrant_client::search(config, &query_embedding, 30, &SearchFilters::default()).await?;
+    let vector_results =
+        qdrant_client::search(config, &query_embedding, 30, &SearchFilters::default()).await?;
 
     // BM25 search
     let bm25_results = tantivy_index::search(config, query, 30, &SearchFilters::default())?;
