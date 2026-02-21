@@ -19,10 +19,15 @@ chunk_overlap = 200
 listen_port = 7070
 
 # Embedding settings
-# Provider: "openai" (requires OPENAI_API_KEY) or "local" (requires --features local-embed)
+# Provider: "openai" (requires OPENAI_API_KEY), "gemini" (requires GEMINI_API_KEY),
+#           or "local" (requires --features local-embed)
 embedding_provider = "openai"
 embedding_model = "text-embedding-3-small"
 embedding_dimension = 1536
+# For Gemini embedding (768 dim):
+#   embedding_provider = "gemini"
+#   embedding_model = "text-embedding-004"
+#   embedding_dimension = 768
 # For local embedding with multilingual-e5-base (768 dim, recommended):
 #   embedding_provider = "local"
 #   embedding_model = "multilingual-e5-base"
