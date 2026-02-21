@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 pub async fn get_embedding(config: &AppConfig, text: &str) -> Result<Vec<f32>> {
     match config.embedding_provider.as_str() {
         "openai" => get_embedding_openai(config, text).await,
+        "gemini" => get_embedding_gemini(config, text).await,
         "local" => get_embedding_local(config, text),
         other => anyhow::bail!(
-            "Unknown embedding_provider '{}'. Supported: openai, local",
+            "Unknown embedding_provider '{}'. Supported: openai, gemini, local",
             other
         ),
     }
@@ -65,6 +66,81 @@ async fn get_embedding_openai(config: &AppConfig, text: &str) -> Result<Vec<f32>
         .next()
         .map(|d| d.embedding)
         .ok_or_else(|| anyhow::anyhow!("No embedding returned"))
+}
+
+// --- Gemini provider ---
+
+#[derive(Serialize)]
+struct GeminiEmbedRequest {
+    model: String,
+    content: GeminiContent,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_dimensionality: Option<usize>,
+}
+
+#[derive(Serialize)]
+struct GeminiContent {
+    parts: Vec<GeminiPart>,
+}
+
+#[derive(Serialize)]
+struct GeminiPart {
+    text: String,
+}
+
+#[derive(Deserialize)]
+struct GeminiEmbedResponse {
+    embedding: GeminiEmbeddingValues,
+}
+
+#[derive(Deserialize)]
+struct GeminiEmbeddingValues {
+    values: Vec<f32>,
+}
+
+async fn get_embedding_gemini(config: &AppConfig, text: &str) -> Result<Vec<f32>> {
+    let api_key = std::env::var("GEMINI_API_KEY")
+        .map_err(|_| anyhow::anyhow!("GEMINI_API_KEY environment variable not set"))?;
+
+    let base_url = std::env::var("GEMINI_API_BASE")
+        .unwrap_or_else(|_| "https://generativelanguage.googleapis.com/v1beta".into());
+
+    let model = &config.embedding_model;
+    let model_path = if model.starts_with("models/") {
+        model.clone()
+    } else {
+        format!("models/{}", model)
+    };
+
+    let request = GeminiEmbedRequest {
+        model: model_path.clone(),
+        content: GeminiContent {
+            parts: vec![GeminiPart {
+                text: text.to_string(),
+            }],
+        },
+        output_dimensionality: Some(config.embedding_dimension),
+    };
+
+    let client = reqwest::Client::new();
+    let url = format!("{}/{}:embedContent", base_url, model_path);
+
+    let response = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("x-goog-api-key", &api_key)
+        .json(&request)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("Gemini API error ({}): {}", status, body);
+    }
+
+    let resp: GeminiEmbedResponse = response.json().await?;
+    Ok(resp.embedding.values)
 }
 
 // --- Local provider (fastembed) ---
