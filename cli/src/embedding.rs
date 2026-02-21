@@ -84,6 +84,8 @@ struct GeminiBatchEmbedRequest {
 struct GeminiEmbedRequest {
     model: String,
     content: GeminiContent,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_dimensionality: Option<usize>,
 }
 
 #[derive(Serialize)]
@@ -127,6 +129,7 @@ async fn get_embeddings_gemini(config: &AppConfig, texts: &[String]) -> Result<V
             content: GeminiContent {
                 parts: vec![GeminiPart { text: t.clone() }],
             },
+            output_dimensionality: Some(config.embedding_dimension),
         })
         .collect();
 

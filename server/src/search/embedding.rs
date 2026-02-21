@@ -74,6 +74,8 @@ async fn get_embedding_openai(config: &AppConfig, text: &str) -> Result<Vec<f32>
 struct GeminiEmbedRequest {
     model: String,
     content: GeminiContent,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_dimensionality: Option<usize>,
 }
 
 #[derive(Serialize)]
@@ -117,6 +119,7 @@ async fn get_embedding_gemini(config: &AppConfig, text: &str) -> Result<Vec<f32>
                 text: text.to_string(),
             }],
         },
+        output_dimensionality: Some(config.embedding_dimension),
     };
 
     let client = reqwest::Client::new();

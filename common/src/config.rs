@@ -212,12 +212,12 @@ mod tests {
     fn test_parse_gemini_config() {
         let toml_str = r#"
             embedding_provider = "gemini"
-            embedding_model = "text-embedding-004"
+            embedding_model = "gemini-embedding-001"
             embedding_dimension = 768
         "#;
         let config: AppConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(config.embedding_provider, "gemini");
-        assert_eq!(config.embedding_model, "text-embedding-004");
+        assert_eq!(config.embedding_model, "gemini-embedding-001");
         assert_eq!(config.embedding_dimension, 768);
         // Defaults for unspecified fields
         assert_eq!(config.collection_name, "docs");
