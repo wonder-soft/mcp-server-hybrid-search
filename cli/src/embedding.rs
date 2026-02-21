@@ -133,14 +133,12 @@ async fn get_embeddings_gemini(config: &AppConfig, texts: &[String]) -> Result<V
     let batch_request = GeminiBatchEmbedRequest { requests };
 
     let client = reqwest::Client::new();
-    let url = format!(
-        "{}/{}:batchEmbedContents?key={}",
-        base_url, model_path, api_key
-    );
+    let url = format!("{}/{}:batchEmbedContents", base_url, model_path);
 
     let response = client
         .post(&url)
         .header("Content-Type", "application/json")
+        .header("x-goog-api-key", &api_key)
         .json(&batch_request)
         .send()
         .await?;

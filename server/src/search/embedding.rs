@@ -120,11 +120,12 @@ async fn get_embedding_gemini(config: &AppConfig, text: &str) -> Result<Vec<f32>
     };
 
     let client = reqwest::Client::new();
-    let url = format!("{}/{}:embedContent?key={}", base_url, model_path, api_key);
+    let url = format!("{}/{}:embedContent", base_url, model_path);
 
     let response = client
         .post(&url)
         .header("Content-Type", "application/json")
+        .header("x-goog-api-key", &api_key)
         .json(&request)
         .send()
         .await?;
