@@ -209,14 +209,14 @@ pub async fn export_all_chunks(config: &AppConfig) -> Result<Vec<ExportedChunk>>
                 updated_at: get_payload_str(payload, "updated_at"),
             };
 
-            #[allow(deprecated)]
             let embedding = point
                 .vectors
                 .as_ref()
-                .and_then(|v| {
-                    use qdrant_client::qdrant::vectors_output::VectorsOptions;
-                    match &v.vectors_options {
-                        Some(VectorsOptions::Vector(vec_output)) => Some(vec_output.data.clone()),
+                .and_then(|v| v.get_vector())
+                .and_then(|vector| {
+                    use qdrant_client::qdrant::vector_output::Vector;
+                    match vector {
+                        Vector::Dense(dense) => Some(dense.data),
                         _ => None,
                     }
                 })
